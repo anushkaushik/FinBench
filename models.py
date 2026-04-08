@@ -36,7 +36,7 @@ class FinbenchAction(Action):
     reasoning: str = Field(default="")
     # Task 2
     identified_risks: List[str] = Field(default_factory=list)
-    risk_score: float = Field(default=0.0, ge=0.0, le=10.0)
+    risk_score: float = Field(default=0.01, gt=0.0, lt=1.0)
     recommendations: List[str] = Field(default_factory=list)
     priority_recommendation: str = Field(default="")
     # Task 3
