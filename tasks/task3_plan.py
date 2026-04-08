@@ -4,20 +4,22 @@ Task 3 (Hard): Comprehensive Financial Plan
 Agent must generate a complete, coherent financial plan covering:
 - Emergency fund, insurance, debt, investments, retirement,
   tax optimization, goal timelines, rebalancing strategy.
- 
+
 This is hard because all components must be internally consistent
 and appropriate for the specific client.
 """
- 
+
 from __future__ import annotations
- 
- 
- 
+
+
+
 from typing import Dict
 from ..models import ClientProfile, MarketConditions, Reward
- 
- 
- 
+
+STRICT_SCORE_EPSILON = 0.0001
+
+
+
 def _retirement_savings_needed(client: ClientProfile, market: MarketConditions) -> float:
     """Estimate minimum monthly retirement savings using simplified FV formula."""
     years = max(1, 65 - client.age)
@@ -26,16 +28,16 @@ def _retirement_savings_needed(client: ClientProfile, market: MarketConditions) 
     target = client.monthly_expenses * 12 * 25
     existing_nw = max(0, client.net_worth)
     gap = max(0, target - existing_nw)
- 
+
     if monthly_rate == 0 or years == 0:
         return gap / (years * 12) if years > 0 else 0
- 
+
     months = years * 12
     # PMT formula: gap = PMT * [(1+r)^n - 1] / r
     fv_factor = ((1 + monthly_rate) ** months - 1) / monthly_rate
     return gap / fv_factor if fv_factor > 0 else 0
- 
- 
+
+
 # FIX #7: updated signature to accept FinbenchAction directly instead of
 #         FinancialPlanAction (which doesn't exist). Reads the same fields.
 # FIX (market arg): FinbenchEnvironment passes self._market which is a MarketConditions
@@ -59,9 +61,9 @@ def grade(
     """
     components: Dict[str, float] = {}
     penalties: Dict[str, float] = {}
- 
+
     monthly_income = client.annual_income / 12
- 
+
     # ── 1. Emergency Fund (0.12) ──────────────────────────────────────────────
     if not client.has_emergency_fund:
         ideal_months = 6 if client.dependents > 0 else 3
@@ -73,7 +75,7 @@ def grade(
             components["emergency_fund"] = 0.0
     else:
         components["emergency_fund"] = 0.12  # already has one
- 
+
     # ── 2. Insurance (0.08) ──────────────────────────────────────────────────
     if not client.has_insurance:
         ins_text = " ".join(action.insurance_recommendations).lower()
@@ -85,7 +87,7 @@ def grade(
             components["insurance"] = 0.0
     else:
         components["insurance"] = 0.08
- 
+
     # ── 3. Debt Payoff Strategy (0.10) ────────────────────────────────────────
     if client.debt_to_income_ratio > 0.36:
         debt_text = action.debt_payoff_strategy.lower()
@@ -96,20 +98,20 @@ def grade(
         components["debt_strategy"] = 0.10 if has_strategy else 0.02
     else:
         components["debt_strategy"] = 0.10  # no debt problem = no penalty
- 
+
     # ── 4. Investment Allocation Suitability (0.20) ───────────────────────────
     allocs = action.investment_allocations
     total_alloc = sum(allocs.values())
- 
+
     # Sum check
     if abs(total_alloc - 100.0) > 5:
         penalties["alloc_sum_error"] = 0.10
         components["investment_allocation"] = 0.0
     else:
-        equity = allocs.get("equities", 0)  # schema only defines "equities", not "stocks"
+        equity = allocs.get("equities", allocs.get("stocks", 0))
         bonds = allocs.get("bonds", 0)
         cash = allocs.get("cash", 0)
- 
+
         # Expected equity range by risk
         eq_ranges = {
             "conservative": (10, 30),
@@ -117,28 +119,28 @@ def grade(
             "aggressive": (55, 85),
         }
         lo, hi = eq_ranges[client.risk_tolerance]
- 
+
         alloc_score = 0.0
         if lo <= equity <= hi:
             alloc_score += 0.10
- 
+
         # Age adjustment: high equity bad near retirement
         if client.age >= 60 and equity > 50:
             penalties["too_aggressive_near_retirement"] = 0.05
         else:
             alloc_score += 0.05
- 
+
         # Cash not excessively high
         if cash <= 20:
             alloc_score += 0.05
- 
+
         components["investment_allocation"] = min(0.20, alloc_score)
- 
+
     # ── 5. Retirement Savings (0.15) ──────────────────────────────────────────
     needed = _retirement_savings_needed(client, market)
     agent_savings = action.retirement_monthly_savings
     income_pct = agent_savings / monthly_income if monthly_income > 0 else 0
- 
+
     # Must save at least 10% of income for partial credit
     if income_pct >= 0.15 and agent_savings >= needed * 0.80:
         components["retirement_savings"] = 0.15
@@ -148,7 +150,7 @@ def grade(
         components["retirement_savings"] = 0.04
     else:
         components["retirement_savings"] = 0.0
- 
+
     # ── 6. Tax Optimization (0.15) ────────────────────────────────────────────
     tax_text = " ".join(action.tax_optimization_strategies).lower()
     tax_score = 0.0
@@ -160,15 +162,15 @@ def grade(
     for kw, pts in tax_keywords.items():
         if kw in tax_text:
             tax_score += pts
- 
+
     # High earners must mention tax-advantaged accounts
     if client.tax_bracket >= 0.32 and not any(
         t in tax_text for t in ["401k", "ira", "roth", "hsa"]
     ):
         penalties["missed_tax_advantaged"] = 0.05
- 
+
     components["tax_optimization"] = min(0.15, tax_score)
- 
+
     # ── 7. Goal Timeline Realism (0.10) ──────────────────────────────────────
     if client.goals and action.goal_timelines:
         # Check timelines are within investment horizon
@@ -181,7 +183,7 @@ def grade(
         components["goal_timelines"] = round(timeline_score, 4)
     else:
         components["goal_timelines"] = 0.05  # partial for missing
- 
+
     # ── 8. Internal Consistency (0.10) ────────────────────────────────────────
     consistency_score = 0.10
     # Inconsistency: saving a lot but no debt payoff strategy with high debt
@@ -190,20 +192,20 @@ def grade(
         consistency_score -= 0.03
     # Inconsistency: aggressive allocation but conservative risk tolerance
     if client.risk_tolerance == "conservative":
-        equity = allocs.get("equities", 0)  # schema only defines "equities", not "stocks"
+        equity = allocs.get("equities", allocs.get("stocks", 0))
         if equity > 40:
             penalties["allocation_risk_mismatch"] = 0.05
             consistency_score -= 0.05
     # Bonus: reasoning present
     if len(action.reasoning.strip()) >= 50:
         consistency_score = min(0.10, consistency_score + 0.02)
- 
+
     components["consistency"] = max(0.0, round(consistency_score, 4))
- 
+
     # ── Final Score ───────────────────────────────────────────────────────────
     total = sum(components.values()) - sum(penalties.values())
-    total = max(0.0, min(1.0, total))
- 
+    total = max(STRICT_SCORE_EPSILON, min(1.0 - STRICT_SCORE_EPSILON, total))
+
     return Reward(
         total=round(total, 4),
         components=components,
