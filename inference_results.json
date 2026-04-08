@@ -1,0 +1,43 @@
+{
+  "api_base_url": "https://router.huggingface.co/v1",
+  "model": "Qwen/Qwen2.5-72B-Instruct",
+  "tasks": [
+    {
+      "task_id": "task1_allocation",
+      "scenario_scores": [
+        0.93,
+        0.95,
+        0.95,
+        0.93,
+        0.95,
+        1.0
+      ],
+      "average_score": 0.9517
+    },
+    {
+      "task_id": "task2_risk",
+      "scenario_scores": [
+        0.89,
+        0.93,
+        0.93,
+        0.9,
+        0.84,
+        0.93
+      ],
+      "average_score": 0.9033
+    },
+    {
+      "task_id": "task3_plan",
+      "scenario_scores": [
+        0.98,
+        0.98,
+        0.95,
+        0.91,
+        0.98,
+        0.91
+      ],
+      "average_score": 0.9517
+    }
+  ],
+  "overall_average": 0.9356
+}

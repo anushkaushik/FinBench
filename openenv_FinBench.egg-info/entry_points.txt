@@ -1,0 +1,2 @@
+[console_scripts]
+server = FinBench.server.app:main
