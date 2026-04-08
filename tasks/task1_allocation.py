@@ -40,6 +40,7 @@ ALLOCATION_PROFILES: Dict[str, Dict[str, Tuple[float, float, float]]] = {
 }
 
 AGE_BOND_RULE_BONUS = 5.0   # extra bond % for every 10 years over 50
+STRICT_SCORE_EPSILON = 0.0001
 
 
 # FIX #7 (task grader signature): graders previously accepted task-specific action
@@ -117,7 +118,7 @@ def grade(action, client: ClientProfile) -> Reward:
     components["reasoning"] = 0.10 if len(action.reasoning.strip()) >= 30 else 0.04
 
     total = sum(components.values())
-    total = max(0.0, min(1.0, total))
+    total = max(STRICT_SCORE_EPSILON, min(1.0 - STRICT_SCORE_EPSILON, total))
 
     return Reward(
         total=round(total, 4),
