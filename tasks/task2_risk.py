@@ -12,6 +12,8 @@ from __future__ import annotations
 from typing import Dict, List, Set
 from ..models import ClientProfile, Reward
 
+STRICT_SCORE_EPSILON = 0.0001
+
 
 # ── Risk factors that should be identified based on client profile ────────────
 def expected_risk_flags(client: ClientProfile) -> Dict[str, str]:
@@ -56,16 +58,16 @@ def expected_risk_flags(client: ClientProfile) -> Dict[str, str]:
 
 
 def expected_risk_score_range(client: ClientProfile) -> tuple[float, float]:
-    """Return acceptable (min, max) risk score based on client profile."""
+    """Return acceptable normalized (min, max) risk score based on client profile."""
     flags = expected_risk_flags(client)
     num_flags = len(flags)
 
     # Base from risk tolerance
-    base = {"conservative": 3.0, "moderate": 5.0, "aggressive": 6.0}[client.risk_tolerance]
-    adjustment = num_flags * 0.8
+    base = {"conservative": 0.3, "moderate": 0.5, "aggressive": 0.6}[client.risk_tolerance]
+    adjustment = num_flags * 0.08
 
-    ideal = min(10.0, base + adjustment)
-    return max(0, ideal - 2.0), min(10.0, ideal + 2.0)
+    ideal = min(1.0 - STRICT_SCORE_EPSILON, base + adjustment)
+    return max(STRICT_SCORE_EPSILON, ideal - 0.2), min(1.0 - STRICT_SCORE_EPSILON, ideal + 0.2)
 
 
 # FIX #7: updated signature to accept FinbenchAction directly instead of
@@ -159,7 +161,7 @@ def grade(action, client: ClientProfile) -> Reward:
     components["priority_clarity"] = round(min(0.15, clarity_score), 4)
 
     total = sum(components.values()) - sum(penalties.values())
-    total = max(0.0, min(1.0, total))
+    total = max(STRICT_SCORE_EPSILON, min(1.0 - STRICT_SCORE_EPSILON, total))
 
     return Reward(
         total=round(total, 4),
@@ -168,7 +170,7 @@ def grade(action, client: ClientProfile) -> Reward:
         explanation=(
             f"Expected flags: {list(expected_flags.keys())} | "
             f"Caught: {flags_caught}/{len(expected_flags)} | "
-            f"Risk score range: {score_min:.1f}–{score_max:.1f} | "
+            f"Risk score range: {score_min:.2f}–{score_max:.2f} | "
             f"Agent score: {action.risk_score}"
         ),
     )
