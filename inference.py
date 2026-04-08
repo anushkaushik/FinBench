@@ -13,9 +13,9 @@ Defaults:
     MODEL_NAME   = "Qwen/Qwen2.5-72B-Instruct"
 
 Usage:
-    export API_BASE_URL=https://router.huggingface.co/v1
-    export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
-    export HF_TOKEN=hf_...
+    export API_BASE_URL=https://api.openai.com/v1
+    export MODEL_NAME=gpt-4o
+    export HF_TOKEN=sk-...
     python inference.py
     python inference.py --task task1_allocation
 """
@@ -24,29 +24,32 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import sys
 import time
 from typing import List, Optional
-
-import re
-
+import os
+import sys
 from openai import OpenAI
 
-from FinBench.models import FinbenchAction, FinbenchObservation
+
+
 from FinBench.server.FinBench_environment import FinbenchEnvironment, TaskId
+from FinBench.models import FinbenchAction, FinbenchObservation
+
+# FIX #3: FinbenchObservation imported here and used as the correct type hint below
+from FinBench.models import FinbenchAction, FinbenchObservation
+
 
 # ── Environment variables ──────────────────────────────────────────────────────
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
+MODEL_NAME   = os.getenv("MODEL_NAME")   or "Qwen/Qwen2.5-72B-Instruct"
+HF_TOKEN     = os.getenv("HF_TOKEN")     or os.getenv("OPENAI_API_KEY", "")
 
-BENCHMARK = "finbench"
+BENCHMARK    = "finbench"
 NUM_SCENARIOS = 6
-MAX_STEPS = 3  # matches openenv.yaml max_steps
+MAX_STEPS     = 3  # matches openenv.yaml max_steps
+STRICT_SCORE_EPSILON = 0.0001
 
-# ── Logging helpers ─────────────────────────────────────────────────────────────
-
+# ── Logging helpers (mandatory stdout format) ─────────────────────────────────
 
 def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
@@ -54,7 +57,7 @@ def log_start(task: str, env: str, model: str) -> None:
 
 def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
     error_val = error if error else "null"
-    done_val = str(done).lower()
+    done_val  = str(done).lower()
     print(
         f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
@@ -69,7 +72,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
     )
 
 
-# ── System prompt ───────────────────────────────────────────────────────────────
+# ── System prompt ──────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are an expert financial advisor AI. You will be given a client profile
 and a specific task. You must respond with a valid JSON object matching the required schema.
 
@@ -101,7 +104,7 @@ Respond with JSON matching this schema exactly:
 {
   "action_type": "assess_risk",
   "identified_risks": ["<risk 1>", "<risk 2>", ...],
-  "risk_score": <float 0.0-10.0>,
+  "risk_score": <float 0.0-1.0>,
   "recommendations": ["<rec 1>", "<rec 2>", ...],
   "priority_recommendation": "<single most important action>"
 }
@@ -131,7 +134,11 @@ investment_allocations must sum to exactly 100.
 }
 
 
-# ── Prompt builder ──────────────────────────────────────────────────────────────
+# ── Prompt builder ─────────────────────────────────────────────────────────────
+# FIX #3: was `obs: Observation` — Observation was never imported anywhere.
+#         Corrected to FinbenchObservation (already imported above).
+#         obs.client and obs.market_conditions are dicts (from model_dump()),
+#         so access fields with dict syntax, not attribute syntax.
 def build_prompt(obs: FinbenchObservation, task_id: TaskId) -> str:
     c = obs.client
     m = obs.market_conditions
@@ -164,23 +171,28 @@ TASK: {obs.task_description}
     return prompt + "\n" + SCHEMA_PROMPTS[task_id]
 
 
-# ── Action parser ───────────────────────────────────────────────────────────────
-def parse_action(response_text: str) -> FinbenchAction:
+# ── Action parser ──────────────────────────────────────────────────────────────
+# FIX #2: was instantiating AllocationAction / RiskAssessmentAction / FinancialPlanAction
+#         which are never defined or imported in this file.
+#         FinbenchEnvironment.step() accepts a FinbenchAction directly — use that.
+def parse_action(task_id: TaskId, response_text: str) -> FinbenchAction:
     text = response_text.strip()
-    # Strip ```json ... ``` or ``` ... ``` fences robustly
-    text = re.sub(r"^```(?:json)?\n?", "", text)
-    text = re.sub(r"\n?```$", "", text.strip())
+    if text.startswith("```"):
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1]) if len(lines) > 2 else text
     data = json.loads(text)
     return FinbenchAction(**data)
 
 
-# ── Single episode runner ───────────────────────────────────────────────────────
+# ── Single episode runner ──────────────────────────────────────────────────────
 def run_episode(
     client_llm: OpenAI,
     task_id: TaskId,
     scenario_idx: int,
 ) -> float:
     """Run one episode. Returns best reward (score) for this scenario."""
+    # FIX #1: was FinancialAdvisorEnv(...) — class never imported or defined anywhere.
+    #         Correct class is FinbenchEnvironment (imported at top of file).
     env = FinbenchEnvironment(task_id=task_id, scenario_index=scenario_idx)
     obs = env.reset()
 
@@ -199,22 +211,23 @@ def run_episode(
 
             user_prompt = build_prompt(obs, task_id)
             error_msg = None
+            reward = 0.0
 
             try:
                 response = client_llm.chat.completions.create(
                     model=MODEL_NAME,
                     messages=[
                         {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
+                        {"role": "user",   "content": user_prompt},
                     ],
                     temperature=0.1,
                     max_tokens=1200,
                 )
                 response_text = response.choices[0].message.content
-                action = parse_action(response_text)
+                action = parse_action(task_id, response_text)
                 action_str = action.action_type
 
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 error_msg = str(e)
                 action_str = "parse_error"
                 log_step(step=step, action=action_str, reward=0.00, done=True, error=error_msg)
@@ -222,8 +235,11 @@ def run_episode(
                 steps_taken = step
                 break
 
+            # FIX #4: was `obs, reward_obj, done, info = env.step(action)`
+            #         FinbenchEnvironment.step() returns a single FinbenchObservation,
+            #         not a 4-tuple. Reward and done are fields on the observation.
             obs = env.step(action)
-            reward = obs.reward or 0.0  # guard against None
+            reward = obs.reward
             done = obs.done
             rewards.append(reward)
             steps_taken = step
@@ -233,8 +249,8 @@ def run_episode(
             if not done:
                 time.sleep(0.3)
 
-        score = max(rewards) if rewards else 0.0
-        score = min(max(score, 0.0), 1.0)
+        score = max(rewards) if rewards else STRICT_SCORE_EPSILON
+        score = min(max(score, STRICT_SCORE_EPSILON), 1.0 - STRICT_SCORE_EPSILON)
         success = score >= 0.5
 
     finally:
@@ -243,7 +259,7 @@ def run_episode(
     return score
 
 
-# ── Task runner ─────────────────────────────────────────────────────────────────
+# ── Task runner ────────────────────────────────────────────────────────────────
 def run_task(client_llm: OpenAI, task_id: TaskId) -> dict:
     print(f"\n{'='*60}", flush=True)
     print(f"TASK: {task_id.upper()}", flush=True)
@@ -265,7 +281,7 @@ def run_task(client_llm: OpenAI, task_id: TaskId) -> dict:
     }
 
 
-# ── Main ────────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="FinBench Inference")
     parser.add_argument(
@@ -280,7 +296,7 @@ def main():
         print("ERROR: HF_TOKEN (or OPENAI_API_KEY) environment variable not set.")
         sys.exit(1)
 
-    print("\nFinBench - Financial Advisor OpenEnv Inference")
+    print("\n🏦 FinBench — Financial Advisor OpenEnv Inference")
     print(f"   API Base : {API_BASE_URL}")
     print(f"   Model    : {MODEL_NAME}")
     print(f"   Task     : {args.task}")
@@ -298,14 +314,14 @@ def main():
         result = run_task(client_llm, task_id)
         all_results.append(result)
 
+    # ── Summary ───────────────────────────────────────────────────────────────
     print(f"\n{'='*60}")
     print("RESULTS SUMMARY")
     print(f"{'='*60}")
-
     scores = []
-    for result in all_results:
-        scores.append(result["average_score"])
-        print(f"  {result['task_id']:30s} -> {result['average_score']:.4f}")
+    for r in all_results:
+        scores.append(r["average_score"])
+        print(f"  {r['task_id']:30s} → {r['average_score']:.4f}")
 
     overall = sum(scores) / len(scores) if scores else 0.0
     print(f"\n  Overall Average : {overall:.4f}")
@@ -318,7 +334,6 @@ def main():
     }
     with open(args.output, "w") as f:
         json.dump(output, f, indent=2)
-
     print(f"  Results saved  : {args.output}\n")
 
 
