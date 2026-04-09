@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 from typing import Dict, Tuple
-from ..models import ClientProfile, Reward
+from ..models import ClientProfile, Reward, _SCORE_EPSILON as STRICT_SCORE_EPSILON
 
 
 # ── Ideal allocation ranges per risk profile ─────────────────────────────────
@@ -40,7 +40,6 @@ ALLOCATION_PROFILES: Dict[str, Dict[str, Tuple[float, float, float]]] = {
 }
 
 AGE_BOND_RULE_BONUS = 5.0   # extra bond % for every 10 years over 50
-STRICT_SCORE_EPSILON = 0.0001
 
 
 # FIX #7 (task grader signature): graders previously accepted task-specific action
