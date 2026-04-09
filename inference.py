@@ -31,11 +31,7 @@ import sys
 from openai import OpenAI
 
 
-
 from FinBench.server.FinBench_environment import FinbenchEnvironment, TaskId
-from FinBench.models import FinbenchAction, FinbenchObservation
-
-# FIX #3: FinbenchObservation imported here and used as the correct type hint below
 from FinBench.models import FinbenchAction, FinbenchObservation
 
 
@@ -44,10 +40,11 @@ API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME   = os.getenv("MODEL_NAME")   or "Qwen/Qwen2.5-72B-Instruct"
 HF_TOKEN     = os.getenv("HF_TOKEN")     or os.getenv("OPENAI_API_KEY", "")
 
-BENCHMARK    = "finbench"
+BENCHMARK     = "finbench"
 NUM_SCENARIOS = 6
 MAX_STEPS     = 3  # matches openenv.yaml max_steps
 STRICT_SCORE_EPSILON = 0.0001
+
 
 # ── Logging helpers (mandatory stdout format) ─────────────────────────────────
 
@@ -135,10 +132,6 @@ investment_allocations must sum to exactly 100.
 
 
 # ── Prompt builder ─────────────────────────────────────────────────────────────
-# FIX #3: was `obs: Observation` — Observation was never imported anywhere.
-#         Corrected to FinbenchObservation (already imported above).
-#         obs.client and obs.market_conditions are dicts (from model_dump()),
-#         so access fields with dict syntax, not attribute syntax.
 def build_prompt(obs: FinbenchObservation, task_id: TaskId) -> str:
     c = obs.client
     m = obs.market_conditions
@@ -172,9 +165,6 @@ TASK: {obs.task_description}
 
 
 # ── Action parser ──────────────────────────────────────────────────────────────
-# FIX #2: was instantiating AllocationAction / RiskAssessmentAction / FinancialPlanAction
-#         which are never defined or imported in this file.
-#         FinbenchEnvironment.step() accepts a FinbenchAction directly — use that.
 def parse_action(task_id: TaskId, response_text: str) -> FinbenchAction:
     text = response_text.strip()
     if text.startswith("```"):
@@ -184,6 +174,12 @@ def parse_action(task_id: TaskId, response_text: str) -> FinbenchAction:
     return FinbenchAction(**data)
 
 
+# ── Score clamping helper ──────────────────────────────────────────────────────
+def clamp_score(value: float) -> float:
+    """Clamp a reward/score so it is strictly between 0 and 1 (exclusive)."""
+    return min(max(float(value), STRICT_SCORE_EPSILON), 1.0 - STRICT_SCORE_EPSILON)
+
+
 # ── Single episode runner ──────────────────────────────────────────────────────
 def run_episode(
     client_llm: OpenAI,
@@ -191,8 +187,6 @@ def run_episode(
     scenario_idx: int,
 ) -> float:
     """Run one episode. Returns best reward (score) for this scenario."""
-    # FIX #1: was FinancialAdvisorEnv(...) — class never imported or defined anywhere.
-    #         Correct class is FinbenchEnvironment (imported at top of file).
     env = FinbenchEnvironment(task_id=task_id, scenario_index=scenario_idx)
     obs = env.reset()
 
@@ -230,16 +224,17 @@ def run_episode(
             except Exception as e:
                 error_msg = str(e)
                 action_str = "parse_error"
-                log_step(step=step, action=action_str, reward=0.00, done=True, error=error_msg)
+                # FIX: log and append STRICT_SCORE_EPSILON (not 0.0) on parse failure
+                log_step(step=step, action=action_str, reward=STRICT_SCORE_EPSILON, done=True, error=error_msg)
                 rewards.append(STRICT_SCORE_EPSILON)
                 steps_taken = step
                 break
 
-            # FIX #4: was `obs, reward_obj, done, info = env.step(action)`
-            #         FinbenchEnvironment.step() returns a single FinbenchObservation,
-            #         not a 4-tuple. Reward and done are fields on the observation.
             obs = env.step(action)
-            reward = obs.reward
+
+            # FIX: clamp reward before appending so every value in `rewards`
+            #      is strictly between 0 and 1 — env can return exactly 0.0 or 1.0
+            reward = clamp_score(obs.reward)
             done = obs.done
             rewards.append(reward)
             steps_taken = step
@@ -249,8 +244,10 @@ def run_episode(
             if not done:
                 time.sleep(0.3)
 
+        # FIX: clamp final score as a safety net (rewards list is already clamped,
+        #      but guard against edge cases like an empty list falling back to epsilon)
         score = max(rewards) if rewards else STRICT_SCORE_EPSILON
-        score = min(max(score, STRICT_SCORE_EPSILON), 1.0 - STRICT_SCORE_EPSILON)
+        score = clamp_score(score)
         success = score >= 0.5
 
     finally:
@@ -268,9 +265,8 @@ def run_task(client_llm: OpenAI, task_id: TaskId) -> dict:
     scenario_scores = []
     for i in range(NUM_SCENARIOS):
         score = run_episode(client_llm, task_id, i)
-        # Ensure stored scores are strictly within (0, 1)
-        score = min(max(score, STRICT_SCORE_EPSILON), 1.0 - STRICT_SCORE_EPSILON)
         scenario_scores.append(score)
+        time.sleep(0.5)
 
     avg = sum(scenario_scores) / len(scenario_scores)
     print(f"\n  Task Average: {avg:.4f}", flush=True)
