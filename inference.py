@@ -231,7 +231,7 @@ def run_episode(
                 error_msg = str(e)
                 action_str = "parse_error"
                 log_step(step=step, action=action_str, reward=0.00, done=True, error=error_msg)
-                rewards.append(0.0)
+                rrewards.append(STRICT_SCORE_EPSILON)
                 steps_taken = step
                 break
 
