@@ -8,7 +8,7 @@
 
 from typing import Dict, List, Literal, Any
 from openenv.core.env_server.types import Action, Observation
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ClientProfile(BaseModel):
@@ -60,6 +60,7 @@ class FinbenchObservation(Observation):
     previous_actions: List[Dict[str, Any]] = Field(default_factory=list)
     feedback: str = Field(default="")
 
+
 class MarketConditions(BaseModel):
     equity_expected_return: float
     bond_expected_return: float
@@ -68,9 +69,26 @@ class MarketConditions(BaseModel):
     market_volatility: str
 
 
+# Scores must be strictly inside (0, 1) — never exactly 0.0 or 1.0.
+_SCORE_EPSILON = 0.0001
+
+
 class Reward(BaseModel):
     total: float
     components: Dict[str, float] = Field(default_factory=dict)
     penalties: Dict[str, float] = Field(default_factory=dict)
     explanation: str = ""
+
+    @field_validator("total")
+    @classmethod
+    def total_strictly_between_zero_and_one(cls, v: float) -> float:
+        """Enforce that every task score is strictly in (0, 1)."""
+        lo, hi = _SCORE_EPSILON, 1.0 - _SCORE_EPSILON
+        if not (lo <= v <= hi):
+            raise ValueError(
+                f"Reward.total must be strictly between 0 and 1 "
+                f"(got {v!r}; valid range [{lo}, {hi}])"
+            )
+        return v
+
 
