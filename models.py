@@ -70,7 +70,7 @@ class MarketConditions(BaseModel):
 
 
 # Scores must be strictly inside (0, 1) — never exactly 0.0 or 1.0.
-_SCORE_EPSILON = 0.0001
+_SCORE_EPSILON = 0.001
 
 
 class Reward(BaseModel):
