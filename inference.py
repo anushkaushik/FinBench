@@ -198,7 +198,7 @@ def run_episode(
 
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = STRICT_SCORE_EPSILON
     success = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
@@ -211,7 +211,7 @@ def run_episode(
 
             user_prompt = build_prompt(obs, task_id)
             error_msg = None
-            reward = 0.0
+            reward = STRICT_SCORE_EPSILON
 
             try:
                 response = client_llm.chat.completions.create(
@@ -324,7 +324,7 @@ def main():
         scores.append(r["average_score"])
         print(f"  {r['task_id']:30s} → {r['average_score']:.4f}")
 
-    overall = sum(scores) / len(scores) if scores else 0.0
+    overall = sum(scores) / len(scores) if scores else STRICT_SCORE_EPSILON
     print(f"\n  Overall Average : {overall:.4f}")
 
     output = {
