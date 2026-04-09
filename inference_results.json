@@ -12,7 +12,7 @@
         0.95,
         0.9999
       ],
-      "average_score": 0.9517
+      "average_score": 0.9516
     },
     {
       "task_id": "task2_risk",
@@ -21,24 +21,24 @@
         0.93,
         0.93,
         0.9,
-        0.84,
+        0.81,
         0.93
       ],
-      "average_score": 0.9033
+      "average_score": 0.8983
     },
     {
       "task_id": "task3_plan",
       "scenario_scores": [
         0.98,
-        0.98,
-        0.95,
+        0.91,
+        0.93,
         0.91,
         0.98,
-        0.91
+        0.98
       ],
-      "average_score": 0.9517
+      "average_score": 0.9483
     }
   ],
-  "overall_average": 0.9356
+  "overall_average": 0.9327
 }
 
