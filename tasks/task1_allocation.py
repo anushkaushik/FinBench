@@ -120,7 +120,7 @@ def grade(action, client: ClientProfile) -> Reward:
     total = max(STRICT_SCORE_EPSILON, min(1.0 - STRICT_SCORE_EPSILON, total))
  
     return Reward(
-        total=round(total, 4),
+        total=round(total, 3),
         components=components,
         penalties=penalties,
         explanation=(
