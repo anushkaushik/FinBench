@@ -10,9 +10,8 @@ from __future__ import annotations
 
 
 from typing import Dict, List, Set
-from ..models import ClientProfile, Reward
+from ..models import ClientProfile, Reward, _SCORE_EPSILON as STRICT_SCORE_EPSILON
 
-STRICT_SCORE_EPSILON = 0.0001
 
 
 # ── Risk factors that should be identified based on client profile ────────────
