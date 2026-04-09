@@ -81,7 +81,7 @@ class FinbenchEnvironment(Environment):
             previous_actions=[],
             feedback="",
             done=False,
-            reward=0.0001,
+            reward=0.001,
         )
 
     def step(self, action: FinbenchAction) -> FinbenchObservation:
