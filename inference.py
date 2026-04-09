@@ -268,8 +268,9 @@ def run_task(client_llm: OpenAI, task_id: TaskId) -> dict:
     scenario_scores = []
     for i in range(NUM_SCENARIOS):
         score = run_episode(client_llm, task_id, i)
+        # Ensure stored scores are strictly within (0, 1)
+        score = min(max(score, STRICT_SCORE_EPSILON), 1.0 - STRICT_SCORE_EPSILON)
         scenario_scores.append(score)
-        time.sleep(0.5)
 
     avg = sum(scenario_scores) / len(scenario_scores)
     print(f"\n  Task Average: {avg:.4f}", flush=True)
