@@ -43,7 +43,7 @@ HF_TOKEN     = os.getenv("HF_TOKEN")     or os.getenv("OPENAI_API_KEY", "")
 BENCHMARK     = "finbench"
 NUM_SCENARIOS = 6
 MAX_STEPS     = 3  # matches openenv.yaml max_steps
-STRICT_SCORE_EPSILON = 0.0001
+STRICT_SCORE_EPSILON = 0.001
 
 
 # ── Logging helpers (mandatory stdout format) ─────────────────────────────────
