@@ -14,9 +14,8 @@ from __future__ import annotations
 
 
 from typing import Dict
-from ..models import ClientProfile, MarketConditions, Reward
+from ..models import ClientProfile, MarketConditions, Reward, _SCORE_EPSILON as STRICT_SCORE_EPSILON
 
-STRICT_SCORE_EPSILON = 0.0001
 
 
 
