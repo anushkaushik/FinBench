@@ -77,7 +77,16 @@ IMPORTANT:
 - All portfolio allocations must sum to exactly 100.
 - Be specific and detailed in all reasoning fields.
 - Consider the client's age, risk tolerance, income, dependents, and goals holistically.
-- Respond ONLY with the JSON object — no markdown, no explanation outside JSON.
+- Respond ONLY with the JSON object - no markdown, no explanation outside JSON.
+- For risk assessment: always check for concentration risk (any single asset >60%),
+  debt-to-income ratio above 36%, missing emergency fund, insurance gaps with dependents,
+  low savings rate (<15% of income), near-retirement aggressive allocation, and tax
+  optimization needs for high earners (income >$150k or tax bracket >=32%).
+- Use specific terms where relevant: "diversification", "concentrated", "debt-to-income",
+  "emergency fund", "tax-advantaged", "401k", "IRA", "Roth", "HSA", "avalanche", "snowball",
+  "rebalance", "life insurance", "disability", "capital gains", "tax-loss harvesting".
+- For financial plans: always mention 401k/IRA for retirement, avalanche or snowball for
+  debt payoff, and specify emergency fund in months (3-6 months of expenses).
 """
 
 SCHEMA_PROMPTS = {
@@ -101,18 +110,23 @@ Respond with JSON matching this schema exactly:
 {
   "action_type": "assess_risk",
   "identified_risks": ["<risk 1>", "<risk 2>", ...],
-  "risk_score": <float 0.0-1.0>,
+  "risk_score": <float 0.0-1.0 normalized>,
   "recommendations": ["<rec 1>", "<rec 2>", ...],
   "priority_recommendation": "<single most important action>"
 }
+Rules:
+- identified_risks: list 3-5 specific risks (do not exceed 6)
+- risk_score: normalized float 0.0-1.0 (NOT 0-10). e.g. 0.65 means moderately high risk
+- recommendations: provide AT LEAST 3 specific actionable recommendations
+- priority_recommendation: must clearly name the single most critical issue
 """,
     "task3_plan": """
 Respond with JSON matching this schema exactly:
 {
   "action_type": "financial_plan",
-  "emergency_fund_months": <float>,
-  "insurance_recommendations": ["<e.g. term life insurance>", ...],
-  "debt_payoff_strategy": "<e.g. avalanche method>",
+  "emergency_fund_months": <float, use 3.0 if no dependents, 6.0 if has dependents>,
+  "insurance_recommendations": ["<e.g. term life insurance>", "<e.g. disability insurance>", ...],
+  "debt_payoff_strategy": "<use avalanche or snowball method explicitly>",
   "investment_allocations": {
     "equities": <float 0-100>,
     "bonds": <float 0-100>,
@@ -120,13 +134,17 @@ Respond with JSON matching this schema exactly:
     "real_estate": <float 0-100>,
     "commodities": <float 0-100>
   },
-  "retirement_monthly_savings": <float>,
-  "tax_optimization_strategies": ["<e.g. maximize 401k>", ...],
-  "goal_timelines": {"<goal name>": <years as int>, ...},
+  "retirement_monthly_savings": <float, must be at least 15% of monthly income>,
+  "tax_optimization_strategies": ["<e.g. maximize 401k contributions>", "<e.g. contribute to IRA>", "<e.g. Roth conversion>", ...],
+  "goal_timelines": {"<exact goal name from client profile>": <realistic years as int>, ...},
   "rebalancing_frequency": "quarterly",
   "reasoning": "<comprehensive explanation>"
 }
-investment_allocations must sum to exactly 100.
+Rules:
+- investment_allocations must sum to exactly 100
+- goal_timelines: include EVERY goal listed in the client profile, mapped to realistic years
+- retirement_monthly_savings: set to at least 15% of the client monthly income
+- tax_optimization_strategies: include 401k, IRA, and Roth where applicable
 """,
 }
 
@@ -135,12 +153,18 @@ investment_allocations must sum to exactly 100.
 def build_prompt(obs: FinbenchObservation, task_id: TaskId) -> str:
     c = obs.client
     m = obs.market_conditions
+    monthly_income = c['annual_income'] / 12
+    monthly_savings = monthly_income - c['monthly_expenses']
+    savings_rate = (monthly_savings / monthly_income * 100) if monthly_income > 0 else 0
+
     prompt = f"""
 CLIENT PROFILE:
 - Age: {c['age']}
 - Annual Income: ${c['annual_income']:,.0f}
 - Net Worth: ${c['net_worth']:,.0f}
+- Monthly Income: ${monthly_income:,.0f}
 - Monthly Expenses: ${c['monthly_expenses']:,.0f}
+- Monthly Savings: ${monthly_savings:,.0f} ({savings_rate:.1f}% savings rate)
 - Dependents: {c['dependents']}
 - Risk Tolerance: {c['risk_tolerance']}
 - Investment Horizon: {c['investment_horizon_years']} years
@@ -214,8 +238,8 @@ def run_episode(
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user",   "content": user_prompt},
                     ],
-                    temperature=0.1,
-                    max_tokens=1200,
+                    temperature=0.0,
+                    max_tokens=2000,
                 )
                 response_text = response.choices[0].message.content
                 action = parse_action(task_id, response_text)
