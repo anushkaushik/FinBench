@@ -32,7 +32,7 @@ TASK_DESCRIPTIONS = {
     ),
     "task2_risk": (
         "TASK 2 — Risk Assessment (Medium)\n"
-        "Identify all risk factors, assign a risk score (0–10), and provide prioritized recommendations."
+        "Identify all risk factors, assign a risk score (0.0–1.0 normalized, where 0.0=no risk, 1.0=extreme risk), and provide prioritized recommendations."
     ),
     "task3_plan": (
         "TASK 3 — Comprehensive Financial Plan (Hard)\n"
